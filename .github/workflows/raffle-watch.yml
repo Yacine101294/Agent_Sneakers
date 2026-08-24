@@ -19,7 +19,7 @@ on:
     #   "0 * * * *"     -> toutes les heures
     #   "0 */3 * * *"   -> toutes les 3 heures
     # -------------------------------------------------------------------
-    - cron: "*0 * * * *"
+    - cron: "0 * * * *"
 
 permissions:
   contents: write
