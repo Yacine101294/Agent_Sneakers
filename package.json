@@ -1,0 +1,14 @@
+{
+  "name": "sneaker-raffle-watcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Surveille les raffles sneakers (Nike, adidas, Jordan, etc.) et envoie une notification Telegram a chaque nouvelle annonce.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node scripts/check-raffles.mjs",
+    "get-chat-id": "node scripts/get-chat-id.mjs"
+  }
+}

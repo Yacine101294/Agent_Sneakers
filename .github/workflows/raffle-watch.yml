@@ -1,0 +1,62 @@
+name: Sneaker Raffle Watch
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Envoyer uniquement un message Telegram de test (sans verifier les raffles)"
+        required: false
+        default: "false"
+  schedule:
+    # -------------------------------------------------------------------
+    # FREQUENCE DE VERIFICATION -> modifiez cette ligne pour l'ajuster.
+    # Format cron (UTC) : minute heure jour mois jour-de-semaine
+    #
+    # Exemples prets a l'emploi (decommentez la ligne voulue, gardez-en une seule) :
+    #   "*/5 * * * *"   -> toutes les 5 minutes
+    #   "*/15 * * * *"  -> toutes les 15 minutes (par defaut)
+    #   "*/30 * * * *"  -> toutes les 30 minutes
+    #   "0 * * * *"     -> toutes les heures
+    #   "0 */3 * * *"   -> toutes les 3 heures
+    # -------------------------------------------------------------------
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: raffle-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run raffle check
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TEST_MODE: ${{ github.event.inputs.test_mode }}
+        run: node scripts/check-raffles.mjs
+
+      - name: Commit updated state
+        if: always()
+        run: |
+          git config user.name "sneaker-raffle-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/seen.json
+          if git diff --staged --quiet; then
+            echo "Aucun changement d'etat a committer."
+          else
+            git commit -m "chore: update seen raffles state [skip ci]"
+            git push
+          fi
