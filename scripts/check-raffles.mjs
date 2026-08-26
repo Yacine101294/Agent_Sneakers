@@ -1,4 +1,4 @@
-// Verifie les nouveaux raffles sneakers sur raffle-sneakers.com et notifie via Telegram.
+// Verifie les nouveaux raffles sneakers sur plusieurs sources et notifie via Telegram.
 //
 // Variables d'environnement requises :
 //   TELEGRAM_BOT_TOKEN  -> token du bot (obtenu via @BotFather)
@@ -11,11 +11,10 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
-const SOURCE_URL = "https://raffle-sneakers.com/";
 const STATE_PATH = path.resolve("state", "seen.json");
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
-const MAX_SEEN_IDS = 1000; // borne la taille du fichier d'etat dans le temps
+const MAX_SEEN_IDS = 2000; // borne la taille du fichier d'etat dans le temps
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -47,6 +46,7 @@ function decodeHtmlEntities(text) {
     "&#038;": "&",
     "&quot;": '"',
     "&#039;": "'",
+    "&apos;": "'",
     "&#8217;": "’",
     "&#8216;": "‘",
     "&#8211;": "-",
@@ -66,16 +66,16 @@ function detectBrand(title) {
   return "Autre";
 }
 
-async function fetchHomepage() {
+async function fetchText(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const res = await fetch(SOURCE_URL, {
+    const res = await fetch(url, {
       headers: { "User-Agent": USER_AGENT },
       signal: controller.signal,
     });
     if (!res.ok) {
-      throw new Error(`Fetch de ${SOURCE_URL} a echoue: HTTP ${res.status}`);
+      throw new Error(`Fetch de ${url} a echoue: HTTP ${res.status}`);
     }
     return await res.text();
   } finally {
@@ -83,36 +83,82 @@ async function fetchHomepage() {
   }
 }
 
-function parseRaffles(html) {
-  const raffles = [];
-  const articleRe = /<article\s+([^>]*)>([\s\S]*?)<\/article>/g;
-  let match;
-  while ((match = articleRe.exec(html)) !== null) {
-    const [, attrs, body] = match;
+// ---------------------------------------------------------------------------
+// Source 1 : raffle-sneakers.com (blog dedie, page d'accueil HTML statique)
+// ---------------------------------------------------------------------------
+const raffleSneakersSource = {
+  name: "raffle-sneakers.com",
+  async fetchRaffles() {
+    const html = await fetchText("https://raffle-sneakers.com/");
+    const raffles = [];
+    const articleRe = /<article\s+([^>]*)>([\s\S]*?)<\/article>/g;
+    let match;
+    while ((match = articleRe.exec(html)) !== null) {
+      const [, attrs, body] = match;
 
-    const classAttr = /class="([^"]*)"/.exec(attrs)?.[1] ?? "";
-    if (!/category-raffle/.test(classAttr)) continue;
+      const classAttr = /class="([^"]*)"/.exec(attrs)?.[1] ?? "";
+      if (!/category-raffle/.test(classAttr)) continue;
 
-    const idAttr = /data-id="(\d+)"/.exec(attrs)?.[1];
-    const linkMatch = /<h2[^>]*>\s*<a href="([^"]+)"[^>]*>([^<]+)<\/a>/.exec(body);
-    if (!linkMatch) continue;
-    const [, link, rawTitle] = linkMatch;
-    const title = decodeHtmlEntities(rawTitle.trim());
+      const idAttr = /data-id="(\d+)"/.exec(attrs)?.[1];
+      const linkMatch = /<h2[^>]*>\s*<a href="([^"]+)"[^>]*>([^<]+)<\/a>/.exec(body);
+      if (!linkMatch) continue;
+      const [, link, rawTitle] = linkMatch;
+      const title = decodeHtmlEntities(rawTitle.trim());
 
-    const statusMatch = /w-text-value">([^<]+)<\/span>/.exec(body);
-    const imgMatch = /<img[^>]+src="([^"]+)"/.exec(body);
+      const statusMatch = /w-text-value">([^<]+)<\/span>/.exec(body);
+      const imgMatch = /<img[^>]+src="([^"]+)"/.exec(body);
 
-    raffles.push({
-      id: idAttr ?? link,
-      title,
-      brand: detectBrand(title),
-      link,
-      status: statusMatch ? decodeHtmlEntities(statusMatch[1].trim()) : null,
-      image: imgMatch ? imgMatch[1] : null,
-    });
-  }
-  return raffles;
-}
+      raffles.push({
+        id: idAttr ?? link,
+        title,
+        brand: detectBrand(title),
+        link,
+        status: statusMatch ? decodeHtmlEntities(statusMatch[1].trim()) : null,
+        image: imgMatch ? imgMatch[1] : null,
+      });
+    }
+    return raffles;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Source 2 : Tops and Bottoms USA - flux Atom du blog "New Look" (revendeur
+// US, raffles maison, un article = un raffle, inscription via un formulaire
+// unique sur le site).
+// ---------------------------------------------------------------------------
+const topsAndBottomsSource = {
+  name: "topsandbottomsusa.com",
+  async fetchRaffles() {
+    const xml = await fetchText("https://www.topsandbottomsusa.com/blogs/new-look.atom");
+    const raffles = [];
+    const entries = xml.split("<entry>").slice(1);
+    for (const entry of entries) {
+      if (!/raffle/i.test(entry)) continue; // ce blog ne parle pas que de raffles
+
+      const id = /<id>([^<]+)<\/id>/.exec(entry)?.[1];
+      const rawTitle = /<title>([^<]*)<\/title>/.exec(entry)?.[1];
+      const link = /<link rel="alternate"[^>]*href="([^"]+)"/.exec(entry)?.[1];
+      if (!id || !rawTitle || !link) continue;
+
+      const title = decodeHtmlEntities(rawTitle.trim());
+      const imgMatch = /<img[^>]+src="([^"]+)"/.exec(entry);
+      let image = imgMatch ? imgMatch[1] : null;
+      if (image && image.startsWith("//")) image = "https:" + image;
+
+      raffles.push({
+        id,
+        title,
+        brand: detectBrand(title),
+        link,
+        status: "Raffle en cours (Tops and Bottoms USA)",
+        image,
+      });
+    }
+    return raffles;
+  },
+};
+
+const SOURCES = [raffleSneakersSource, topsAndBottomsSource];
 
 async function loadState() {
   try {
@@ -182,6 +228,21 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;");
 }
 
+async function fetchAllRaffles() {
+  const results = await Promise.allSettled(SOURCES.map((s) => s.fetchRaffles()));
+  const raffles = [];
+  results.forEach((result, i) => {
+    const source = SOURCES[i];
+    if (result.status === "fulfilled") {
+      console.log(`  - ${source.name}: ${result.value.length} raffle(s)`);
+      raffles.push(...result.value);
+    } else {
+      console.error(`  - ${source.name}: ECHEC (${result.reason?.message ?? result.reason})`);
+    }
+  });
+  return raffles;
+}
+
 async function main() {
   if (TEST_MODE) {
     console.log("Mode test : envoi d'un message Telegram de verification...");
@@ -196,10 +257,9 @@ async function main() {
     return;
   }
 
-  console.log(`Recuperation de ${SOURCE_URL} ...`);
-  const html = await fetchHomepage();
-  const raffles = parseRaffles(html);
-  console.log(`${raffles.length} raffle(s) trouve(s) sur la page.`);
+  console.log("Recuperation des raffles sur toutes les sources...");
+  const raffles = await fetchAllRaffles();
+  console.log(`${raffles.length} raffle(s) trouve(s) au total.`);
 
   const state = await loadState();
   const seen = new Set(state.seenIds);

@@ -6,7 +6,10 @@ Surveille automatiquement les nouveaux raffles sneakers (Nike, adidas, Air Jorda
 
 ## Comment ca marche
 
-- **Source des donnees** : [raffle-sneakers.com](https://raffle-sneakers.com/), un site dedie qui recense en continu les raffles Nike, adidas, Jordan, Off-White, New Balance, Yeezy, etc. Chaque run recupere la page d'accueil (une seule requete HTTP), en extrait les raffles listes, et compare avec la liste des raffles deja vus.
+- **Sources des donnees** (plusieurs, interrogees independamment a chaque run) :
+  - [raffle-sneakers.com](https://raffle-sneakers.com/) — blog dedie aux raffles Nike, adidas, Jordan, Off-White, New Balance, Yeezy, etc. (page d'accueil HTML).
+  - [topsandbottomsusa.com](https://www.topsandbottomsusa.com/blogs/new-look) — revendeur US qui publie ses propres raffles via un flux Atom/RSS standard (un article = un raffle, tres actif).
+  Si l'une des sources tombe en panne ou change de structure, l'autre continue de fonctionner : elles sont independantes et fusionnees avant la comparaison avec les raffles deja vus.
 - **Detection des nouveautes** : la liste des raffles deja notifies est stockee dans [`state/seen.json`](state/seen.json), commite dans le depot Git a chaque execution. Pas de base de donnees externe necessaire.
 - **Notification** : envoyee via l'API gratuite de Telegram (Bot API), avec la marque, le modele, le statut et le lien.
 - **Hebergement** : le script tourne dans **GitHub Actions**, sur un depot **public** (les minutes d'execution GitHub Actions sont illimitees et gratuites pour les depots publics, contrairement aux depots prives qui sont limites a 2000 min/mois gratuites). Votre ordinateur n'a pas besoin d'etre allume : tout se passe sur les serveurs de GitHub, gratuitement.
@@ -77,9 +80,9 @@ Committez et poussez le changement (`git add`, `git commit`, `git push`) : la no
 
 ## Limites connues
 
-- **Une seule source pour l'instant** (raffle-sneakers.com), qui couvre deja Nike, adidas, Jordan, Yeezy, Off-White, New Balance et d'autres marques sur un seul site. Si le site change sa structure HTML, le parsing (`scripts/check-raffles.mjs`, fonction `parseRaffles`) devra etre mis a jour — c'est le seul point de maintenance a prevoir sur la duree.
-- Le lien envoye pointe vers la fiche raffle-sneakers.com du raffle (qui liste elle-meme les liens d'inscription chez le ou les revendeurs), plutot que directement vers le site de la marque : la fiche source ne propose pas toujours un lien externe unique et fiable a extraire automatiquement (parfois plusieurs revendeurs/regions, parfois des bannieres publicitaires sans rapport). C'est un choix deliberement plus robuste plutot que de risquer d'envoyer un lien errone.
-- Pas de garantie que 100% des raffles Nike SNKRS / adidas Confirmed y apparaissent : c'est un site tiers, pas les flux officiels des marques (qui n'exposent pas d'API publique gratuite et bloquent activement le scraping automatise).
+- **Deux sources tierces**, pas les flux officiels des marques (Nike SNKRS / adidas Confirmed n'exposent pas d'API publique gratuite et bloquent activement le scraping automatise). Si l'une des deux change de structure, seule sa partie du code (`scripts/check-raffles.mjs`, objets `raffleSneakersSource` / `topsAndBottomsSource`) devra etre mise a jour — c'est le principal point de maintenance a prevoir sur la duree.
+- Le lien envoye pointe vers la fiche/l'article de la source (qui contient elle-meme les details et le lien d'inscription), plutot que toujours vers un lien direct chez la marque : les sources ne proposent pas toujours un lien externe unique et fiable a extraire automatiquement (parfois plusieurs revendeurs/regions, parfois des bannieres publicitaires sans rapport). C'est un choix deliberement plus robuste plutot que de risquer d'envoyer un lien errone.
+- `raffle-sneakers.com` peut traverser des periodes sans nouvelle publication (deja observe : ~2 mois sans mise a jour a un moment donne) — l'agent continue de fonctionner normalement, il n'a simplement rien a signaler sur cette source tant qu'elle est inactive. `topsandbottomsusa.com` sert de source de secours active dans ce cas.
 
 ## Ajouter une autre source plus tard
 
