@@ -53,10 +53,10 @@ jobs:
         run: |
           git config user.name "sneaker-raffle-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add state/seen.json
+          git add state/seen.json historique-raffles.md
           if git diff --staged --quiet; then
             echo "Aucun changement d'etat a committer."
           else
-            git commit -m "chore: update seen raffles state [skip ci]"
+            git commit -m "chore: update seen raffles state + historique [skip ci]"
             git push
           fi

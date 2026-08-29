@@ -8,10 +8,11 @@
 //   node --env-file=.env scripts/check-raffles.mjs
 //   node --env-file=.env scripts/check-raffles.mjs --test   (envoie un message de test, sans toucher a l'etat)
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, appendFile, mkdir, access } from "node:fs/promises";
 import path from "node:path";
 
 const STATE_PATH = path.resolve("state", "seen.json");
+const HISTORY_PATH = path.resolve("historique-raffles.md");
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 const MAX_SEEN_IDS = 2000; // borne la taille du fichier d'etat dans le temps
@@ -253,6 +254,34 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;");
 }
 
+function escapeMarkdownCell(value) {
+  return String(value ?? "-").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+}
+
+async function appendToHistory(raffle) {
+  let fileExists = true;
+  try {
+    await access(HISTORY_PATH);
+  } catch {
+    fileExists = false;
+  }
+
+  if (!fileExists) {
+    const header =
+      "# Historique des raffles detectes\n\n" +
+      "Genere automatiquement par `scripts/check-raffles.mjs`, du plus recent au plus ancien n'est pas garanti (ajout en fin de fichier a chaque run).\n\n" +
+      "| Detecte le | Marque | Modele | Prix | Date de vente | Lien |\n" +
+      "|---|---|---|---|---|---|\n";
+    await writeFile(HISTORY_PATH, header, "utf8");
+  }
+
+  const detectedAt = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  const row =
+    `| ${detectedAt} | ${escapeMarkdownCell(raffle.brand)} | ${escapeMarkdownCell(raffle.title)} | ` +
+    `${escapeMarkdownCell(raffle.price)} | ${escapeMarkdownCell(raffle.releaseDate)} | [Lien](${raffle.link}) |\n`;
+  await appendFile(HISTORY_PATH, row, "utf8");
+}
+
 async function fetchAllRaffles() {
   const results = await Promise.allSettled(SOURCES.map((s) => s.fetchRaffles()));
   const raffles = [];
@@ -307,10 +336,17 @@ async function main() {
 
   for (const raffle of newRaffles) {
     console.log(`-> Notification: [${raffle.brand}] ${raffle.title}`);
+    if (typeof raffle._source.enrich === "function") {
+      Object.assign(raffle, await raffle._source.enrich(raffle));
+    }
+
     try {
-      if (typeof raffle._source.enrich === "function") {
-        Object.assign(raffle, await raffle._source.enrich(raffle));
-      }
+      await appendToHistory(raffle);
+    } catch (err) {
+      console.error(`Echec ecriture historique pour "${raffle.title}": ${err.message}`);
+    }
+
+    try {
       await sendTelegramMessage(raffle);
     } catch (err) {
       console.error(`Echec de notification pour "${raffle.title}": ${err.message}`);
