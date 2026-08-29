@@ -78,6 +78,10 @@ Ouvrez [`.github/workflows/raffle-watch.yml`](.github/workflows/raffle-watch.yml
 
 Committez et poussez le changement (`git add`, `git commit`, `git push`) : la nouvelle frequence est prise en compte au prochain declenchement. Notez que GitHub peut retarder legerement les cron jobs de quelques minutes en cas de forte charge sur leur infrastructure (limitation connue de GitHub Actions, pas un bug du projet).
 
+## Historique consultable depuis l'ordinateur
+
+En plus des notifications Telegram, chaque nouveau raffle detecte est aussi ajoute a [`historique-raffles.md`](historique-raffles.md) (marque, modele, prix, date de vente, lien cliquable). Ce fichier est commite automatiquement dans le depot : consultez-le directement sur GitHub, ou faites `git pull` pour le recuperer en local.
+
 ## Limites connues
 
 - **Deux sources tierces**, pas les flux officiels des marques (Nike SNKRS / adidas Confirmed n'exposent pas d'API publique gratuite et bloquent activement le scraping automatise). Si l'une des deux change de structure, seule sa partie du code (`scripts/check-raffles.mjs`, objets `raffleSneakersSource` / `topsAndBottomsSource`) devra etre mise a jour — c'est le principal point de maintenance a prevoir sur la duree.
