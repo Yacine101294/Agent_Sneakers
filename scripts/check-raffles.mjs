@@ -119,6 +119,22 @@ const raffleSneakersSource = {
     }
     return raffles;
   },
+  // Appele uniquement pour les nouveaux raffles (pas a chaque run sur les 46+
+  // fiches) : va chercher le prix et la date de vente sur la fiche detaillee.
+  async enrich(raffle) {
+    try {
+      const html = await fetchText(raffle.link);
+      const priceMatch = /<strong>Price\s*:?\s*<\/strong>\s*([^<]+)/i.exec(html);
+      const dateMatch = /<strong>Release Date\s*:?\s*<\/strong>\s*([^<]+)/i.exec(html);
+      return {
+        price: priceMatch ? decodeHtmlEntities(priceMatch[1].trim()) : null,
+        releaseDate: dateMatch ? decodeHtmlEntities(dateMatch[1].trim()) : null,
+      };
+    } catch (err) {
+      console.warn(`Enrichissement echoue pour ${raffle.link}: ${err.message}`);
+      return {};
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -145,6 +161,11 @@ const topsAndBottomsSource = {
       let image = imgMatch ? imgMatch[1] : null;
       if (image && image.startsWith("//")) image = "https:" + image;
 
+      // Prix et date de sortie sont deja dans le contenu du flux, pas besoin
+      // d'une requete supplementaire (contrairement a raffle-sneakers.com).
+      const priceMatch = /\$([0-9]{2,4})/.exec(entry);
+      const dateMatch = /Release Date:?\s*<\/strong>\s*([^<]+)/i.exec(entry);
+
       raffles.push({
         id,
         title,
@@ -152,6 +173,8 @@ const topsAndBottomsSource = {
         link,
         status: "Raffle en cours (Tops and Bottoms USA)",
         image,
+        price: priceMatch ? `$${priceMatch[1]}` : null,
+        releaseDate: dateMatch ? decodeHtmlEntities(dateMatch[1].trim()) : null,
       });
     }
     return raffles;
@@ -175,7 +198,7 @@ async function saveState(state) {
   await writeFile(STATE_PATH, JSON.stringify(state, null, 2) + "\n", "utf8");
 }
 
-async function sendTelegramMessage({ brand, title, link, image, status }) {
+async function sendTelegramMessage({ brand, title, link, image, status, price, releaseDate }) {
   if (!BOT_TOKEN || !CHAT_ID) {
     throw new Error("TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID doivent etre definis.");
   }
@@ -184,6 +207,8 @@ async function sendTelegramMessage({ brand, title, link, image, status }) {
     `🆕 <b>Nouveau raffle sneakers !</b>\n\n` +
     `👟 <b>Marque :</b> ${escapeHtml(brand)}\n` +
     `📦 <b>Modele :</b> ${escapeHtml(title)}\n` +
+    (price ? `💰 <b>Prix :</b> ${escapeHtml(price)}\n` : "") +
+    (releaseDate ? `📅 <b>Date de vente :</b> ${escapeHtml(releaseDate)}\n` : "") +
     (status ? `📋 <b>Statut :</b> ${escapeHtml(status)}\n` : "") +
     `🔗 <b>Inscription :</b> ${link}`;
 
@@ -235,7 +260,10 @@ async function fetchAllRaffles() {
     const source = SOURCES[i];
     if (result.status === "fulfilled") {
       console.log(`  - ${source.name}: ${result.value.length} raffle(s)`);
-      raffles.push(...result.value);
+      for (const raffle of result.value) {
+        raffle._source = source;
+        raffles.push(raffle);
+      }
     } else {
       console.error(`  - ${source.name}: ECHEC (${result.reason?.message ?? result.reason})`);
     }
@@ -280,6 +308,9 @@ async function main() {
   for (const raffle of newRaffles) {
     console.log(`-> Notification: [${raffle.brand}] ${raffle.title}`);
     try {
+      if (typeof raffle._source.enrich === "function") {
+        Object.assign(raffle, await raffle._source.enrich(raffle));
+      }
       await sendTelegramMessage(raffle);
     } catch (err) {
       console.error(`Echec de notification pour "${raffle.title}": ${err.message}`);
