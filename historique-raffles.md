@@ -64,3 +64,4 @@ Genere automatiquement par `scripts/check-raffles.mjs`, du plus recent au plus a
 | 2026-11-07 01:39 UTC | Nike | Nike Ja 4 “Code Red” Brings Crimson Heat to Ja Morant's Signature Line | $130 | - | [Lien](https://www.topsandbottomsusa.com/blogs/new-look/nike-ja-4-code-red-release-details) |
 | 2026-11-10 03:13 UTC | Air Jordan | Air Jordan 3 “Not Nice” Gives a Dark Twist to Holiday Style | $215 | November 21, 2026 | [Lien](https://www.topsandbottomsusa.com/blogs/new-look/air-jordan-3-not-nice-release-details) |
 | 2026-11-10 03:13 UTC | Air Jordan | Air Jordan 3 Retro “Santa” Adds a Festive Twist to a Timeless Classic | $155 | November 21, 2026 | [Lien](https://www.topsandbottomsusa.com/blogs/new-look/air-jordan-3-santa-release-details) |
+| 2026-11-11 01:02 UTC | Air Jordan | Air Jordan 3 Retro SE "Lola Bunny": The Queen Is Back! | $155 | November 21st, 2026 | [Lien](https://www.topsandbottomsusa.com/blogs/new-look/air-jordan-3-lola-bunny-release-details) |
